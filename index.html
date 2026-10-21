@@ -584,7 +584,14 @@ h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.4
 
   function collectAllowed(loc){return false}
 
-  const api={score,pickCourses,pickLives,axisLean,buildRecord,collectAllowed};
+  const ZW=["\u200B","\u200C","\u200D","\u2060"], ZW_MARK="\u2063";
+  function hiddenRecord(ans, v){
+    const ver=String(v).replace(/\D/g,"").split("").map(c=>{const n=Number(c);return ZW[n>>2]+ZW[n&3]}).join("");
+    const a=ans.map(x=>ZW[{"-2":0,"-1":1,"1":2,"2":3}[x]]).join("");
+    return ZW_MARK+ver+a+ZW_MARK;
+  }
+
+  const api={score,pickCourses,pickLives,axisLean,buildRecord,collectAllowed,hiddenRecord};
   if(typeof module==="object"&&module.exports)module.exports=api; else root.GFSScore=api;
 })(typeof globalThis!=="undefined"?globalThis:this);
 </script>
@@ -619,7 +626,7 @@ h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.4
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-.sd-body{margin:0;background:var(--bg);color:var(--body);font-family:var(--text);font-size:16px;line-height:1.7;padding-inline:16px;padding-block:0 40px;-webkit-font-smoothing:antialiased}
+.sd-body{margin:0;background:var(--bg);color:var(--body);font-family:var(--text);font-size:16px;line-height:1.7;padding-inline:16px;padding-block:0 calc(96px + env(safe-area-inset-bottom));-webkit-font-smoothing:antialiased}
 .wrap{max-width:680px;margin:0 auto}
 header.brand{display:flex;align-items:center;justify-content:space-between;padding-block:18px 10px}
 .logo{font-family:var(--display);color:var(--ink);font-size:15px;letter-spacing:.08em}
@@ -745,7 +752,7 @@ ul.list li{margin:5px 0}
 .row button{flex:1 1 180px}
 a.copy{display:block;text-align:center;text-decoration:none;flex:1}
 .copy{background:var(--ink);color:var(--bg);border:0;border-radius:12px;padding:14px;font-weight:900}
-.copybox{width:100%;margin-top:10px;font:inherit;font-size:13px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--body);padding:10px;min-height:120px}
+#btnLine{flex:1 1 100%;text-align:center;text-decoration:none;background:#06833E;color:#fff}
 
 
 .hero::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(255,255,255,.14) 1px,transparent 1.4px);background-size:18px 18px;-webkit-mask-image:radial-gradient(ellipse at 80% 0%,#000 10%,transparent 70%);mask-image:radial-gradient(ellipse at 80% 0%,#000 10%,transparent 70%)}
@@ -900,11 +907,10 @@ a.copy{display:block;text-align:center;text-decoration:none;flex:1}
       <ul class="lives" id="rLives"></ul>
     </div>
 
-    <div class="card">
-      <h2>結果を専任コンサルに送る</h2>
-      <p style="margin:0;font-size:14px">コピーして、LINEなどに貼り付けて送れます。</p>
-      <div class="row"><button class="copy" id="btnCopy">結果をコピー</button></div>
-      <textarea class="copybox" id="copyText" readonly hidden aria-label="コピー用の結果"></textarea>
+    <div class="card" id="sendCard">
+      <h2>結果をLINEに保存する</h2>
+      <p style="margin:0;font-size:14px">押すとGFSのLINEが開き、結果とおすすめの講義が入った状態になります。そのまま送信すると、トークに残っていつでも見返せます。保存した結果は、回答の内容も含めて、専任コンサルが講義の案内の参考にします。</p>
+      <div class="row"><a class="copy" id="btnLine" href="#">LINEに結果を保存する</a></div>
     </div>
 
     <div class="card" id="backCard" hidden>
@@ -1016,6 +1022,7 @@ const APP_VERSION="2026-10-01"; // 質問の趣旨・重み・判定を変えた
 const $=id=>root.getElementById(id);
 const KEY="gfs-style-test-v1";
 const BACK_ALLOWED=[];
+const LINE_ID="@184pbozb";
 function backUrl(){return "list"}
 let ans=new Array(Q.length).fill(null), cur=0, locked=false, announced=-1;
 
@@ -1098,8 +1105,15 @@ function finish(restoredAt){ // restoredAt があるときは、保存した前�
     return `<li><a class="lv ${L.cat}" href="${L.href}" target="_blank" rel="noopener"><span class="lv-tag">${p.tag}</span><span class="lv-nm">${L.nm}</span><span class="lv-ds">${L.ds}</span><span class="lv-go" aria-hidden="true">→</span></a></li>`}).join("");
   const lines=[`【GFS 投資スタイル診断の結果】`,`タイプ：${T.name}（${T.style}）`,`テクニカル ${r.pa}% ／ ファンダメンタルズ ${r.pb}%`,
     ...AXES.map((A,i)=>`・${A.name}：${r.axis[i]<0?A.a:r.axis[i]>0?A.b:"どちらでもない"}`)];
-  $("copyText").value=lines.join("\n"); $("copyText").hidden=true;
-  $("btnCopy").textContent="結果をコピー";
+  {
+    const item=(nm,url)=>`・${nm}${url?`\n${url}`:""}`;
+    const save=[...lines,"",
+      "▼必修講義で復習（受講中の方も見られます）",...comp.slice(0,1).map(c=>item(c.nm,c.link)),"",
+      "▼次に見る講義（必修講義を修了した方向け）",...courses.map(c=>item(c.nm,c.url)),
+      ...(lives.length?["","▼あわせて見たいライブ講義",...lives.map(p=>item(LIVES[p.id].nm,LIVES[p.id].href))]:[])];
+    save[0]+=GFSScore.hiddenRecord(ans,APP_VERSION);
+    $("btnLine").href=`https://line.me/R/oaMessage/${encodeURIComponent(LINE_ID)}/?${encodeURIComponent(save.join("\n"))}`;
+  }
   const back=backUrl(); $("backCard").hidden=!back; if(back){$("btnBack2List").href="#";$("btnBack2List").onclick=e=>{e.preventDefault();api.apply(r.key,r)}}
   if(!restoredAt)collect(GFSScore.buildRecord(r,ans,APP_VERSION));
   if(!restoredAt){clear(); saveResult()}
@@ -1148,11 +1162,6 @@ document.addEventListener("keydown",e=>{
   if(!root.host.isConnected||$("quiz").hidden)return;
   const m={"1":-2,"2":-1,"3":1,"4":2}; if(m[e.key]!==undefined)pick(m[e.key]);
 });
-$("btnCopy").onclick=async()=>{
-  const t=$("copyText").value;
-  try{await navigator.clipboard.writeText(t);$("btnCopy").textContent="コピーしました"}
-  catch(e){$("copyText").hidden=false;$("copyText").focus();$("copyText").select();$("btnCopy").textContent="下の文を選択してコピーしてください"}
-};
 function collect(rec){
   if(!COLLECT_URL||!GFSScore.collectAllowed(location))return;
   try{
